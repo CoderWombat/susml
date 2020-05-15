@@ -18,26 +18,32 @@ import os
 import copy
 
 def initialize_model(model_ft,num_classes, feature_extract, use_pretrained=True):
-
     # model_ft = models.vgg19(pretrained=use_pretrained)
     set_parameter_requires_grad(model_ft, feature_extract)
+
+    # Configure classification layer
     num_ftrs = model_ft.classifier[6].in_features
     model_ft.classifier[6] = nn.Linear(num_ftrs, num_classes)
     input_size = 224
+
     return model_ft, input_size
 
 def set_parameter_requires_grad(model, feature_extracting):
+    """
+    Sets requires_grad to False if we want to reuse the pretrained weights
+    :param model:
+    :param feature_extracting: whether to 'freeze' the first layers
+    :return:
+    """
     if feature_extracting:
         for param in model.parameters():
             param.requires_grad = False
 
-def train_model(rank,model, dataloaders, criterion, optimizer, num_epochs=25):
+def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
     val_acc_history = []
+
     if rank == 0:
         since = time.time()
-
-
-
         best_model_wts = copy.deepcopy(model.state_dict())
         best_acc = 0.0
 
@@ -56,7 +62,7 @@ def train_model(rank,model, dataloaders, criterion, optimizer, num_epochs=25):
             running_corrects = 0
 
             # Iterate over data.
-            for indx,(inputs, labels) in enumerate(Bar(dataloaders[phase])):
+            for indx, (inputs, labels) in enumerate(Bar(dataloaders[phase])):
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
@@ -94,6 +100,7 @@ def train_model(rank,model, dataloaders, criterion, optimizer, num_epochs=25):
                 val_acc_history.append(epoch_acc)
 
         print()
+
     if rank ==0:
         time_elapsed = time.time() - since
         print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
@@ -108,7 +115,7 @@ def setup(rank, world_size):
     os.environ['MASTER_PORT'] = '12355'
 
     # initialize the process group
-    dist.init_process_group("mpi", rank=rank, world_size=world_size,group_name='test')
+    dist.init_process_group("mpi", rank=rank, world_size=world_size, group_name='test')
     #torch.distributed.is_gloo_available()
     #torch.distributed.is_mpi_available()
     #torch.distributed.is_nccl_available()
@@ -116,9 +123,7 @@ def setup(rank, world_size):
 def cleanup():
     dist.destroy_process_group()
 
-
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--image_path',required=True,type=str,help='path to ImageNet root')
     parser.add_argument('--vgg_version',type=str,default='vgg19',help='version of vgg to use')
@@ -127,13 +132,14 @@ if __name__ == '__main__':
     parser.add_argument('--complete_train', action='store_true',help='If set trains the entire network otherwise only the classification layers')
     parser.add_argument('--batch_normalization', action='store_true',help='If set uses the vgg model with batch normalization')
     parser.add_argument('--use_pretrained', action='store_true',help='If set uses the pretrained networks from pytorch')
-    parser.add_argument('--rank', type=int, default=0,help='rank of the prozess')
+    parser.add_argument('--rank', type=int, default=0,help='rank of the process')
     parser.add_argument('--world_size',type=int,default=1, help='worldsize for dist')
 
     args = parser.parse_args()
 
     print("PyTorch Version: ", torch.__version__)
     print("Torchvision Version: ", torchvision.__version__)
+
     data_dir = args.image_path
     setup(args.rank,args.world_size)
     if(args.batch_normalization):
@@ -215,6 +221,6 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
 
     # Train and evaluate
-    model_ft, hist = train_model(args.rank,ddp_model, dataloaders_dict, criterion, optimizer_ft, num_epochs=num_epochs)
+    model_ft, hist = train_model(args.rank, ddp_model, dataloaders_dict, criterion, optimizer_ft, num_epochs=num_epochs)
     print('saving model')
     torch.save(model_ft, 'trainedModel.pth')
