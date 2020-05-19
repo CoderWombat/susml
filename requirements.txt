@@ -1,3 +1,0 @@
-barbar
-torch
-torchvision

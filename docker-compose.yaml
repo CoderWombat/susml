@@ -10,6 +10,7 @@ services:
     volumes:
       - ./src:/home/pi/src
       - ./dataset:/home/pi/dataset
+
   slave:
     hostname: slave
     image: jkhlr/pytorch-mpi
