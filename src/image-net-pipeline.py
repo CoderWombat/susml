@@ -14,22 +14,9 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import time
 import os
 import copy
-from torchvision.models.alexnet import model_urls as alexnet_urls
-from torchvision.models.vgg import model_urls as vgg_urls
-from torchvision.models.resnet import model_urls as resnet_urls
-from torchvision.models.inception import model_urls as inception_urls
-
-def set_model_urls_to_http():
-    for k in vgg_urls:
-        vgg_urls[k] = vgg_urls[k].replace('https://', 'http://')
-    for k in resnet_urls:
-        resnet_urls[k] = resnet_urls[k].replace('https://', 'http://')
-    alexnet_urls['alexnet'] = alexnet_urls['alexnet'].replace('https://', 'http://')
-    inception_urls['inception_v3_google'] = inception_urls['inception_v3_google'].replace('https://', 'http://')
+import torch.utils.data.dataloader
 
 def initialize_model(model_name, num_classes, feature_extract, use_pretrained=True):
-    # Otherwise model download might not work
-    set_model_urls_to_http()
     model_ft = None
 
     if model_name == "alexnet":
@@ -40,9 +27,9 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         num_ftrs = model_ft.classifier[6].in_features
         model_ft.classifier[6] = nn.Linear(num_ftrs, num_classes)
         input_size = 224
-    elif model_name == "vgg-19":
-        """ VGG-19 """
-        model_ft = models.vgg19_bn(pretrained=use_pretrained)
+    elif model_name == "vgg-16":
+        """ VGG-16 """
+        model_ft = models.vgg16_bn(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
         num_ftrs = model_ft.classifier[6].in_features
         model_ft.classifier[6] = nn.Linear(num_ftrs, num_classes)
@@ -76,6 +63,20 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         num_ftrs = model_ft.fc.in_features
         model_ft.fc = nn.Linear(num_ftrs, num_classes)
         input_size = 299
+    elif model_name == "mobilenet":
+        model_ft = torch.hub.load('pytorch/vision:v0.6.0', 'mobilenet_v2', pretrained=use_pretrained)
+        set_parameter_requires_grad(model_ft, feature_extract)
+        num_ftr = model_ft.classifier[1].in_features
+        model_ft.classifier[1] = nn.Linear(num_ftr, num_classes)
+        model_ft.num_classes = num_classes
+        input_size = 256
+    elif model_name == "sufflenet":
+        model_ft = torch.hub.load('pytorch/vision:v0.6.0', 'shufflenet_v2_x1_0', pretrained=use_pretrained)
+        set_parameter_requires_grad(model_ft, feature_extract)
+        num_ftrs = model_ft.fc.in_features
+        model_ft.fc = nn.Linear(num_ftrs, num_classes)
+        model_ft.num_classes = num_classes
+        input_size = 256
     else:
         print("Invalid model name, exiting...")
         exit()
