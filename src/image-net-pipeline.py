@@ -241,7 +241,7 @@ if __name__ == '__main__':
 
     device = torch.device("cpu")
     model_ft = model_ft.to(device)
-    ddp_model = DDP(model_ft) if args.distributed else model_ft
+    ddp_model = DDP(model_ft, find_unused_parameters=True) if args.distributed else model_ft
 
     params_to_update = model_ft.parameters()
     print("Params to learn:")
