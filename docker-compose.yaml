@@ -9,7 +9,7 @@ services:
       - net
     volumes:
       - ./src:/home/pi/src
-      - ./dataset:/home/pi/dataset
+      - ./pi-data/0/dataset:/home/pi/dataset
 
   slave:
     hostname: slave
@@ -18,7 +18,7 @@ services:
       - net
     volumes:
       - ./src:/home/pi/src
-      - ./dataset:/home/pi/dataset
+      - ./pi-data/0/dataset:/home/pi/dataset
 
 networks:
   net:

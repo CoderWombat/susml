@@ -70,7 +70,7 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         model_ft.classifier[1] = nn.Linear(num_ftr, num_classes)
         model_ft.num_classes = num_classes
         input_size = 256
-    elif model_name == "sufflenet":
+    elif model_name == "shufflenet":
         model_ft = torch.hub.load('pytorch/vision:v0.6.0', 'shufflenet_v2_x1_0', pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
         num_ftrs = model_ft.fc.in_features
@@ -213,6 +213,7 @@ def preprocess_data(data_dir, batch_size):
     return dataloaders_dict
 
 if __name__ == '__main__':
+    torch.set_num_threads(4)
     parser = argparse.ArgumentParser()
     parser.add_argument('--image_path',required=True,type=str,help='path to ImageNet root')
     parser.add_argument('--model_name',type=str,default='alexnet',help='pretrained model to use')
