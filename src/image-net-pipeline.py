@@ -16,6 +16,68 @@ import os
 import copy
 import torch.utils.data.dataloader
 
+def create_quantized_resnet(model_fe, num_ftrs, num_classes):
+    model_fe_features = nn.Sequential(
+        model_fe.quant,  # Quantize the input
+        model_fe.conv1,
+        model_fe.bn1,
+        model_fe.relu,
+        model_fe.maxpool,
+        model_fe.layer1,
+        model_fe.layer2,
+        model_fe.layer3,
+        model_fe.layer4,
+        model_fe.avgpool,
+        model_fe.dequant,  # Dequantize the output
+    )
+
+    new_head = nn.Sequential(
+        nn.Dropout(p=0.5),
+        nn.Linear(num_ftrs, num_classes),
+    )
+
+    new_model = nn.Sequential(
+        model_fe_features,
+        nn.Flatten(1),
+        new_head,
+    )
+
+    return new_model
+
+def create_quantized_mobilenet(model_fe, num_ftrs, num_classes):
+    model_fe_features = nn.Sequential(
+        model_fe.quant,  # Quantize the input
+        model_fe.features,
+        model_fe.dequant,  # Dequantize the output
+    )
+
+    new_model = nn.Sequential(
+        model_fe_features,
+        # nn.Flatten(1),
+        nn.Linear(num_ftrs, num_classes),
+    )
+
+    return new_model
+
+def create_quantized_shufflenet(model_fe, num_ftrs, num_classes):
+    model_fe_features = nn.Sequential(
+        model_fe.quant, # Quantize the input
+        model_fe.conv1,
+        model_fe.maxpool,
+        model_fe.stage2,
+        model_fe.stage3,
+        model_fe.stage4,
+        model_fe.conv5,
+        model_fe.dequant,  # Dequantize the output
+    )
+
+    new_model = nn.Sequential(
+        model_fe_features,
+        nn.Linear(num_ftrs, num_classes)
+    )
+
+    return new_model
+
 def initialize_model(model_name, num_classes, feature_extract, use_pretrained=True):
     model_ft = None
 
@@ -50,6 +112,13 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         num_ftrs = model_ft.fc.in_features
         model_ft.fc = nn.Linear(num_ftrs, num_classes)
         input_size = 224
+    elif model_name == "quantized_resnet":
+        """ Resnet18 - Quantized
+        """
+        quant_res = models.quantization.resnet18(pretrained=True, progress=True, quantize=True)
+        num_ftrs = quant_res.fc.in_features
+        model_ft = create_quantized_resnet(quant_res, num_ftrs, num_classes)
+        input_size = 224
     elif model_name == "inception":
         """ Inception v3
         Be careful, expects (299,299) sized images and has auxiliary output
@@ -67,9 +136,14 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         model_ft = torch.hub.load('pytorch/vision:v0.6.0', 'mobilenet_v2', pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
         num_ftr = model_ft.classifier[1].in_features
-        model_ft.classifier[1] = nn.Linear(num_ftr, num_classes)
+        model_ft.classifier = nn.Linear(num_ftr, num_classes)
         model_ft.num_classes = num_classes
-        input_size = 256
+        input_size = 224
+    elif model_name == "quantized_mobilenet":
+        quant_mob = models.quantization.mobilenet_v2(pretrained=True, progress=True, quantize=True)
+        num_ftrs = quant_mob.classifier[1].in_features
+        model_ft = create_quantized_mobilenet(quant_mob, num_ftrs, num_classes)
+        input_size = 224
     elif model_name == "shufflenet":
         model_ft = torch.hub.load('pytorch/vision:v0.6.0', 'shufflenet_v2_x1_0', pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
@@ -77,11 +151,24 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         model_ft.fc = nn.Linear(num_ftrs, num_classes)
         model_ft.num_classes = num_classes
         input_size = 256
+    elif model_name == "quantized_shufflenet":
+        quant_shuf = models.quantization.shufflenet_v2_x1_0(pretrained=True, progress=True, quantize=True)
+        num_ftrs = quant_shuf.fc.in_features
+        model_ft = create_quantized_shufflenet(quant_shuf, num_ftrs, num_classes)
+        input_size = 256
+    elif model_name == "efficientnet":
+        model_ft = torch.hub.load('rwightman/gen-efficientnet-pytorch', 'efficientnet_b0', pretrained=use_pretrained)
+        set_parameter_requires_grad(model_ft, feature_extract)
+        num_ftrs = model_ft.classifier.in_features
+        model_ft.classifier = nn.Linear(num_ftrs, num_classes)
+        model_ft.num_classes = num_classes
+        input_size = 256
     else:
         print("Invalid model name, exiting...")
         exit()
 
     return model_ft, input_size
+
 
 def set_parameter_requires_grad(model, feature_extracting):
     """
@@ -93,6 +180,7 @@ def set_parameter_requires_grad(model, feature_extracting):
     if feature_extracting:
         for param in model.parameters():
             param.requires_grad = False
+
 
 def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
     val_acc_history = []
@@ -111,7 +199,7 @@ def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
             if phase == 'train':
                 model.train()  # Set model to training mode
             else:
-                model.eval()   # Set model to evaluate mode
+                model.eval()  # Set model to evaluate mode
 
             running_loss = 0.0
             running_corrects = 0
@@ -156,7 +244,7 @@ def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
 
         print()
 
-    if rank ==0:
+    if rank == 0:
         time_elapsed = time.time() - since
         print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
         print('Best val Acc: {:4f}'.format(best_acc))
@@ -165,14 +253,17 @@ def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
         model.load_state_dict(best_model_wts)
     return model, val_acc_history
 
+
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = '192.168.2.1'
     os.environ['MASTER_PORT'] = '12355'
 
     dist.init_process_group("mpi", rank=rank, world_size=world_size, group_name='test')
 
+
 def cleanup():
     dist.destroy_process_group()
+
 
 def get_num_classes(data_dir):
     num_classes = 0
@@ -180,6 +271,7 @@ def get_num_classes(data_dir):
         num_classes += len(dirnames)
 
     return num_classes
+
 
 def preprocess_data(data_dir, batch_size):
     data_transforms = {
@@ -212,17 +304,20 @@ def preprocess_data(data_dir, batch_size):
 
     return dataloaders_dict
 
+
 if __name__ == '__main__':
     torch.set_num_threads(4)
     parser = argparse.ArgumentParser()
-    parser.add_argument('--image_path',required=True,type=str,help='path to ImageNet root')
-    parser.add_argument('--model_name',type=str,default='alexnet',help='pretrained model to use')
-    parser.add_argument('--num_epochs', type=int,default=100,help='number of epochs')
-    parser.add_argument('--batch_size', type=int,default=1,help='batch size')
-    parser.add_argument('--complete_train', action='store_true',help='If set trains the entire network otherwise only the classification layers')
-    parser.add_argument('--use_pretrained', type=bool, help='If set uses the pretrained networks from pytorch', default=True)
-    parser.add_argument('--rank', type=int, default=0,help='rank of the process')
-    parser.add_argument('--world_size',type=int,default=1, help='worldsize for dist')
+    parser.add_argument('--image_path', required=True, type=str, help='path to ImageNet root')
+    parser.add_argument('--model_name', type=str, default='alexnet', help='pretrained model to use')
+    parser.add_argument('--num_epochs', type=int, default=100, help='number of epochs')
+    parser.add_argument('--batch_size', type=int, default=1, help='batch size')
+    parser.add_argument('--complete_train', action='store_true',
+                        help='If set trains the entire network otherwise only the classification layers')
+    parser.add_argument('--use_pretrained', type=bool, help='If set uses the pretrained networks from pytorch',
+                        default=True)
+    parser.add_argument('--rank', type=int, default=0, help='rank of the process')
+    parser.add_argument('--world_size', type=int, default=1, help='worldsize for dist')
     parser.add_argument('--distributed', action='store_true')
 
     args = parser.parse_args()
@@ -231,17 +326,17 @@ if __name__ == '__main__':
     print("Torchvision Version: ", torchvision.__version__)
 
     if args.distributed:
-        setup(args.rank,args.world_size)
+        setup(args.rank, args.world_size)
 
     feature_extracting = not args.complete_train
 
-    model_ft, input_size = initialize_model(args.model_name, get_num_classes(args.image_path), feature_extracting, use_pretrained=True)
+    model_ft, input_size = initialize_model(args.model_name, get_num_classes(args.image_path), feature_extracting,
+                                            use_pretrained=True)
 
     dataloaders_dict = preprocess_data(args.image_path, args.batch_size)
 
     device = torch.device("cpu")
     model_ft = model_ft.to(device)
-    ddp_model = DDP(model_ft, find_unused_parameters=True) if args.distributed else model_ft
 
     params_to_update = model_ft.parameters()
     print("Params to learn:")
@@ -250,11 +345,13 @@ if __name__ == '__main__':
         for name, param in model_ft.named_parameters():
             if param.requires_grad == True:
                 params_to_update.append(param)
-                print("\t",name)
+                print("\t", name)
     else:
-        for name,param in model_ft.named_parameters():
+        for name, param in model_ft.named_parameters():
             if param.requires_grad == True:
-                print("\t",name)
+                print("\t", name)
+
+    ddp_model = DDP(model_ft, find_unused_parameters=True) if args.distributed else model_ft
 
     # Observe that all parameters are being optimized
     optimizer_ft = optim.Adam(params_to_update, lr=0.001)
@@ -263,6 +360,7 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
 
     # Train and evaluate
-    model_ft, hist = train_model(args.rank, ddp_model, dataloaders_dict, criterion, optimizer_ft, num_epochs=args.num_epochs)
+    model_ft, hist = train_model(args.rank, ddp_model, dataloaders_dict, criterion, optimizer_ft,
+                                 num_epochs=args.num_epochs)
     print('saving model')
     torch.save(model_ft, 'trainedModel.pth')
