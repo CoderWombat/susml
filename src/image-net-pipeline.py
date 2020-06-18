@@ -15,6 +15,8 @@ import time
 import os
 import copy
 import torch.utils.data.dataloader
+import torch.multiprocessing as mp
+import faulthandler
 
 def initialize_model(model_name, num_classes, feature_extract, use_pretrained=True):
     model_ft = None
@@ -29,7 +31,7 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         input_size = 224
     elif model_name == "vgg-16":
         """ VGG-16 """
-        model_ft = models.vgg16_bn(pretrained=use_pretrained)
+        model_ft = models.vgg16_bn(pretrained=use_pretrained,)
         set_parameter_requires_grad(model_ft, feature_extract)
         num_ftrs = model_ft.classifier[6].in_features
         model_ft.classifier[6] = nn.Linear(num_ftrs, num_classes)
@@ -108,8 +110,12 @@ def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
 
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
+            #print("rank {0} calculating {1}".format(rank, phase))
             if phase == 'train':
                 model.train()  # Set model to training mode
+                print(str(rank) + ' blocking')
+                torch.distributed.barrier()
+                print(str(rank) + ' unblocked')
             else:
                 model.eval()   # Set model to evaluate mode
 
@@ -135,6 +141,7 @@ def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
+                        #print("rank %d calculating loss" % rank)
                         loss.backward()
                         optimizer.step()
 
@@ -148,26 +155,25 @@ def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
             print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
 
             # deep copy the model
-            if phase == 'val' and epoch_acc > best_acc and rank == 0:
+            if phase == 'val' and rank == 0 and epoch_acc > best_acc :
+                #print("rank 0 saving better model")
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(model.state_dict())
             if phase == 'val':
                 val_acc_history.append(epoch_acc)
 
-        print()
-
-    if rank ==0:
+        print(str(rank) + 'finished train and val')
+    if rank == 0:
         time_elapsed = time.time() - since
         print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
         print('Best val Acc: {:4f}'.format(best_acc))
-
         # load best model weights
         model.load_state_dict(best_model_wts)
     return model, val_acc_history
 
 def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = '192.168.2.1'
-    os.environ['MASTER_PORT'] = '12355'
+    #os.environ['MASTER_ADDR'] = '192.168.2.1'
+    #os.environ['MASTER_PORT'] = '12355'
 
     dist.init_process_group("mpi", rank=rank, world_size=world_size, group_name='test')
 
@@ -203,7 +209,7 @@ def preprocess_data(data_dir, batch_size):
                       ['train', 'val']}
     # Create training and validation dataloaders
     dataloaders_dict = {
-        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=4) for x
+        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=0) for x
         in ['train', 'val']}
 
     print(image_datasets['train'].class_to_idx)
@@ -213,7 +219,11 @@ def preprocess_data(data_dir, batch_size):
     return dataloaders_dict
 
 if __name__ == '__main__':
+    mp.set_start_method("spawn")
+    print("possible threads: " + str(torch.get_num_threads()))
     torch.set_num_threads(4)
+
+    #torch.cuda.set_device(0)
     parser = argparse.ArgumentParser()
     parser.add_argument('--image_path',required=True,type=str,help='path to ImageNet root')
     parser.add_argument('--model_name',type=str,default='alexnet',help='pretrained model to use')
@@ -223,15 +233,21 @@ if __name__ == '__main__':
     parser.add_argument('--use_pretrained', type=bool, help='If set uses the pretrained networks from pytorch', default=True)
     parser.add_argument('--rank', type=int, default=0,help='rank of the process')
     parser.add_argument('--world_size',type=int,default=1, help='worldsize for dist')
+    parser.add_argument('--dataloader_workers',type=int,default=0)
     parser.add_argument('--distributed', action='store_true')
 
     args = parser.parse_args()
 
     print("PyTorch Version: ", torch.__version__)
     print("Torchvision Version: ", torchvision.__version__)
+   # rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
+   # world_size= int(os.environ['OMPI_COMM_WORLD_SIZE'])
+    rank = 0
+    world_size = 1
+    print("process with rank %d started in world size &d" % rank,world_size)
 
     if args.distributed:
-        setup(args.rank,args.world_size)
+        setup(rank,world_size)
 
     feature_extracting = not args.complete_train
 
@@ -241,7 +257,11 @@ if __name__ == '__main__':
 
     device = torch.device("cpu")
     model_ft = model_ft.to(device)
-    ddp_model = DDP(model_ft, find_unused_parameters=True) if args.distributed else model_ft
+
+    #print('initializing DDP Model')
+    #with open("fault_handler.log", "w") as fobj:
+        #faulthandler.enable(fobj)
+    ddp_model = DDP(model_ft) if args.distributed else model_ft
 
     params_to_update = model_ft.parameters()
     print("Params to learn:")
@@ -263,6 +283,11 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
 
     # Train and evaluate
-    model_ft, hist = train_model(args.rank, ddp_model, dataloaders_dict, criterion, optimizer_ft, num_epochs=args.num_epochs)
+    start_time = time.time()
+    model_ft, hist = train_model(rank, ddp_model, dataloaders_dict, criterion, optimizer_ft, num_epochs=args.num_epochs)
+    elapsed_time = (time.time() - start_time)
+    print("--- %s seconds ---" % elapsed_time)
+    with open('used_time%d.txt'% elapsed_time, 'w') as f:
+        f.write('%d' % elapsed_time)
     print('saving model')
     torch.save(model_ft, 'trainedModel.pth')
