@@ -16,6 +16,7 @@ import os
 import copy
 import torch.utils.data.dataloader
 import torch.multiprocessing as mp
+import horovod.torch as hvd
 
 def create_quantized_resnet(model_fe, num_ftrs, num_classes):
     model_fe_features = nn.Sequential(
@@ -345,6 +346,8 @@ if __name__ == '__main__':
     world_size= int(os.environ['OMPI_COMM_WORLD_SIZE'])
     print("process with rank %d started in world size &d" % rank, world_size)
 
+    hvd.init()
+
     if args.distributed:
         setup(rank, world_size)
 
@@ -375,7 +378,10 @@ if __name__ == '__main__':
 
     # Observe that all parameters are being optimized
     optimizer_ft = optim.Adam(params_to_update, lr=0.001)
+    optimizer_ft = hvd.DistributedOptimizer(optimizer_ft, named_parameters=params_to_update)
     print(optimizer_ft.state_dict())
+
+    hvd.broadcast_parameters(ddp_model.state_dict(), root_rank=0)
 
     criterion = nn.CrossEntropyLoss()
 
