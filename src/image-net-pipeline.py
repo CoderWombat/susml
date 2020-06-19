@@ -15,6 +15,8 @@ import time
 import os
 import copy
 import torch.utils.data.dataloader
+import torch.multiprocessing as mp
+import faulthandler
 
 def create_quantized_resnet(model_fe, num_ftrs, num_classes):
     model_fe_features = nn.Sequential(
@@ -204,8 +206,12 @@ def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
 
         # Each epoch has a training and validation phase
         for phase in ['train', 'val']:
+            #print("rank {0} calculating {1}".format(rank, phase))
             if phase == 'train':
                 model.train()  # Set model to training mode
+                print(str(rank) + ' blocking')
+                torch.distributed.barrier()
+                print(str(rank) + ' unblocked')
             else:
                 model.eval()  # Set model to evaluate mode
 
@@ -231,6 +237,7 @@ def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
+                        #print("rank %d calculating loss" % rank)
                         loss.backward()
                         optimizer.step()
 
@@ -250,7 +257,7 @@ def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
             if phase == 'val':
                 val_acc_history.append(epoch_acc)
 
-        print()
+        print(str(rank) + 'finished train and val')
 
     if rank == 0:
         time_elapsed = time.time() - since
@@ -263,8 +270,8 @@ def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
 
 
 def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = '192.168.2.1'
-    os.environ['MASTER_PORT'] = '12355'
+    #os.environ['MASTER_ADDR'] = '192.168.2.1'
+    #os.environ['MASTER_PORT'] = '12355'
 
     dist.init_process_group("mpi", rank=rank, world_size=world_size, group_name='test')
 
@@ -303,7 +310,7 @@ def preprocess_data(data_dir, batch_size):
                       ['train', 'val']}
     # Create training and validation dataloaders
     dataloaders_dict = {
-        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=4) for x
+        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=0) for x
         in ['train', 'val']}
 
     print(image_datasets['train'].class_to_idx)
@@ -314,6 +321,8 @@ def preprocess_data(data_dir, batch_size):
 
 
 if __name__ == '__main__':
+    mp.set_start_method("spawn")
+    print("possible threads: " + str(torch.get_num_threads()))
     torch.set_num_threads(4)
     parser = argparse.ArgumentParser()
     parser.add_argument('--image_path', required=True, type=str, help='path to ImageNet root')
@@ -326,15 +335,19 @@ if __name__ == '__main__':
                         default=True)
     parser.add_argument('--rank', type=int, default=0, help='rank of the process')
     parser.add_argument('--world_size', type=int, default=1, help='worldsize for dist')
+    parser.add_argument('--dataloader_workers', type=int, default=0)
     parser.add_argument('--distributed', action='store_true')
 
     args = parser.parse_args()
 
     print("PyTorch Version: ", torch.__version__)
     print("Torchvision Version: ", torchvision.__version__)
+    rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
+    world_size= int(os.environ['OMPI_COMM_WORLD_SIZE'])
+    print("process with rank %d started in world size &d" % rank, world_size)
 
     if args.distributed:
-        setup(args.rank, args.world_size)
+        setup(rank, world_size)
 
     feature_extracting = not args.complete_train
 
@@ -368,7 +381,11 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
 
     # Train and evaluate
-    model_ft, hist = train_model(args.rank, ddp_model, dataloaders_dict, criterion, optimizer_ft,
-                                 num_epochs=args.num_epochs)
+    start_time = time.time()
+    model_ft, hist = train_model(rank, ddp_model, dataloaders_dict, criterion, optimizer_ft, num_epochs=args.num_epochs)
+    elapsed_time = (time.time() - start_time)
+    print("--- %s seconds ---" % elapsed_time)
+    with open('used_time%d.txt'% elapsed_time, 'w') as f:
+        f.write('%d' % elapsed_time)
     print('saving model')
     torch.save(model_ft, 'trainedModel.pth')
