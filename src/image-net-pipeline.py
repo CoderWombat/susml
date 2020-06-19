@@ -45,6 +45,13 @@ def create_quantized_resnet(model_fe, num_ftrs, num_classes):
     return new_model
 
 def create_quantized_mobilenet(model_fe, num_ftrs, num_classes):
+    class Reshape(nn.Module):
+        def __init__(self):
+            super(Reshape, self).__init__()
+
+        def forward(self, x):
+            return x.reshape(x.shape[0], -1)
+
     model_fe_features = nn.Sequential(
         model_fe.quant,  # Quantize the input
         model_fe.features,
@@ -53,7 +60,8 @@ def create_quantized_mobilenet(model_fe, num_ftrs, num_classes):
 
     new_model = nn.Sequential(
         model_fe_features,
-        # nn.Flatten(1),
+        nn.AdaptiveAvgPool2d(1),
+        Reshape(),
         nn.Linear(num_ftrs, num_classes),
     )
 
