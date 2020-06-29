@@ -209,7 +209,8 @@ def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
             if phase == 'train':
                 model.train()  # Set model to training mode
                 print(str(rank) + ' blocking')
-                torch.distributed.barrier()
+                if args.distributed:
+                    torch.distributed.barrier()
                 print(str(rank) + ' unblocked')
             else:
                 model.eval()  # Set model to evaluate mode
