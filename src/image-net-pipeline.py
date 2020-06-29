@@ -94,7 +94,6 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         """ Alexnet """
         model_ft = models.alexnet(pretrained=use_pretrained)
         set_parameter_requires_grad(model_ft, feature_extract)
-        set_parameter_requires_grad(model_ft, feature_extract)
         num_ftrs = model_ft.classifier[6].in_features
         model_ft.classifier[6] = nn.Linear(num_ftrs, num_classes)
         input_size = 224
@@ -167,6 +166,13 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         input_size = 256
     elif model_name == "efficientnet":
         model_ft = torch.hub.load('rwightman/gen-efficientnet-pytorch', 'efficientnet_b0', pretrained=use_pretrained)
+        set_parameter_requires_grad(model_ft, feature_extract)
+        num_ftrs = model_ft.classifier.in_features
+        model_ft.classifier = nn.Linear(num_ftrs, num_classes)
+        model_ft.num_classes = num_classes
+        input_size = 256
+    elif model_name == "densenet":
+        model_ft = torch.hub.load('pytorch/vision:v0.6.0', 'densenet121', pretrained=True)
         set_parameter_requires_grad(model_ft, feature_extract)
         num_ftrs = model_ft.classifier.in_features
         model_ft.classifier = nn.Linear(num_ftrs, num_classes)
