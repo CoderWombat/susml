@@ -15,7 +15,9 @@ import time
 import os
 import copy
 import torch.utils.data.dataloader
+import psutil
 import torch.multiprocessing as mp
+#import mkl
 
 def create_quantized_resnet(model_fe, num_ftrs, num_classes):
     model_fe_features = nn.Sequential(
@@ -226,6 +228,8 @@ def train_model(rank, model, quant_model, dataloaders, criterion, optimizer, num
 
             # Iterate over data.
             for indx, (inputs, labels) in enumerate(Bar(dataloaders[phase])):
+                #psutil.cpu_percent(interval=None)
+                print(psutil.cpu_percent(interval=None, percpu=True))
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
@@ -237,6 +241,9 @@ def train_model(rank, model, quant_model, dataloaders, criterion, optimizer, num
                 with torch.set_grad_enabled(phase == 'train'):
                     # Get model outputs and calculate loss
                     if quant_model != None:
+                        mp_outputs = []
+                        mp.spawn(run_inference, args=(quant_model, inputs, mp_outputs), nprocs=4)
+                        print(mp_outputs)
                         quant_outputs = quant_model(inputs)
                         outputs = model(quant_outputs)
                     else:
@@ -278,6 +285,13 @@ def train_model(rank, model, quant_model, dataloaders, criterion, optimizer, num
         model.load_state_dict(best_model_wts)
     return model, val_acc_history
 
+def run_inference(i, args):
+    print("hi")
+    model = args[0]
+    inputs = args[1]
+    results = args[3]
+
+    results.append((i, model(inputs)))
 
 def setup(rank, world_size):
     #os.environ['MASTER_ADDR'] = '192.168.2.1'
@@ -320,7 +334,7 @@ def preprocess_data(data_dir, batch_size):
                       ['train', 'val']}
     # Create training and validation dataloaders
     dataloaders_dict = {
-        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=0) for x
+        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=4) for x
         in ['train', 'val']}
 
     print(image_datasets['train'].class_to_idx)
@@ -331,9 +345,12 @@ def preprocess_data(data_dir, batch_size):
 
 
 if __name__ == '__main__':
-    mp.set_start_method("spawn")
+    #mp.set_start_method("spawn")
     print("possible threads: " + str(torch.get_num_threads()))
-    torch.set_num_threads(4)
+    torch.set_num_threads(1)
+    #print(mkl.get_max_threads())
+    os.environ["OMP_NUM_THREADS"] = '1'
+    print(torch.__config__.parallel_info())
     parser = argparse.ArgumentParser()
     parser.add_argument('--image_path', required=True, type=str, help='path to ImageNet root')
     parser.add_argument('--model_name', type=str, default='alexnet', help='pretrained model to use')
