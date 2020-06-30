@@ -53,20 +53,19 @@ def create_quantized_mobilenet(model_fe, num_ftrs, num_classes):
         def forward(self, x):
             return x.reshape(x.shape[0], -1)
 
-    model_fe_features = nn.Sequential(
+    quant_model = nn.Sequential(
         model_fe.quant,  # Quantize the input
         model_fe.features,
         model_fe.dequant,  # Dequantize the output
     )
 
     new_model = nn.Sequential(
-        model_fe_features,
         nn.AdaptiveAvgPool2d(1),
         Reshape(),
         nn.Linear(num_ftrs, num_classes),
     )
 
-    return new_model
+    return new_model, quant_model
 
 def create_quantized_shufflenet(model_fe, num_ftrs, num_classes):
     model_fe_features = nn.Sequential(
@@ -89,6 +88,7 @@ def create_quantized_shufflenet(model_fe, num_ftrs, num_classes):
 
 def initialize_model(model_name, num_classes, feature_extract, use_pretrained=True):
     model_ft = None
+    quant_model = None
 
     if model_name == "alexnet":
         """ Alexnet """
@@ -150,7 +150,7 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
     elif model_name == "quantized_mobilenet":
         quant_mob = models.quantization.mobilenet_v2(pretrained=True, progress=True, quantize=True)
         num_ftrs = quant_mob.classifier[1].in_features
-        model_ft = create_quantized_mobilenet(quant_mob, num_ftrs, num_classes)
+        model_ft, quant_model = create_quantized_mobilenet(quant_mob, num_ftrs, num_classes)
         input_size = 224
     elif model_name == "shufflenet":
         model_ft = torch.hub.load('pytorch/vision:v0.6.0', 'shufflenet_v2_x1_0', pretrained=use_pretrained)
@@ -182,7 +182,7 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         print("Invalid model name, exiting...")
         exit()
 
-    return model_ft, input_size
+    return model_ft, input_size, quant_model
 
 
 def set_parameter_requires_grad(model, feature_extracting):
@@ -197,7 +197,7 @@ def set_parameter_requires_grad(model, feature_extracting):
             param.requires_grad = False
 
 
-def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
+def train_model(rank, model, quant_model, dataloaders, criterion, optimizer, num_epochs=25):
     val_acc_history = []
 
     if rank == 0:
@@ -236,7 +236,11 @@ def train_model(rank, model, dataloaders, criterion, optimizer, num_epochs=25):
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
                     # Get model outputs and calculate loss
-                    outputs = model(inputs)
+                    if quant_model != None:
+                        quant_outputs = quant_model(inputs)
+                        outputs = model(quant_outputs)
+                    else:
+                        outputs = model(inputs)
                     loss = criterion(outputs, labels)
 
                     _, preds = torch.max(outputs, 1)
@@ -339,6 +343,7 @@ if __name__ == '__main__':
                         help='If set trains the entire network otherwise only the classification layers')
     parser.add_argument('--use_pretrained', type=bool, help='If set uses the pretrained networks from pytorch',
                         default=True)
+    #parser.add_argument('--quantized', type=bool, help='Set to true when using quantized model', default=True)
     parser.add_argument('--rank', type=int, default=0, help='rank of the process')
     parser.add_argument('--world_size', type=int, default=1, help='worldsize for dist')
     parser.add_argument('--dataloader_workers', type=int, default=0)
@@ -348,8 +353,14 @@ if __name__ == '__main__':
 
     print("PyTorch Version: ", torch.__version__)
     print("Torchvision Version: ", torchvision.__version__)
-    rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
-    world_size= int(os.environ['OMPI_COMM_WORLD_SIZE'])
+    if 'OMPI_COMM_WORLD_RANK' in os.environ:
+        rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
+    else:
+        rank = 0
+    if 'OMPI_COMM_WORLD_SIZE' in os.environ:
+        world_size= int(os.environ['OMPI_COMM_WORLD_SIZE'])
+    else:
+        world_size = 1
     print("process with rank %d started in world size &d" % rank, world_size)
 
     if args.distributed:
@@ -357,14 +368,14 @@ if __name__ == '__main__':
 
     feature_extracting = not args.complete_train
 
-    model_ft, input_size = initialize_model(args.model_name, get_num_classes(args.image_path), feature_extracting,
+    model_ft, input_size, quant_model = initialize_model(args.model_name, get_num_classes(args.image_path), feature_extracting,
                                             use_pretrained=True)
 
     dataloaders_dict = preprocess_data(args.image_path, args.batch_size)
 
     device = torch.device("cpu")
     model_ft = model_ft.to(device)
-
+    #print(model_ft)
     params_to_update = model_ft.parameters()
     print("Params to learn:")
     if feature_extracting:
@@ -388,7 +399,7 @@ if __name__ == '__main__':
 
     # Train and evaluate
     start_time = time.time()
-    model_ft, hist = train_model(rank, ddp_model, dataloaders_dict, criterion, optimizer_ft, num_epochs=args.num_epochs)
+    model_ft, hist = train_model(rank, ddp_model, quant_model, dataloaders_dict, criterion, optimizer_ft, num_epochs=args.num_epochs)
     elapsed_time = (time.time() - start_time)
     print("--- %s seconds ---" % elapsed_time)
     with open('used_time%d.txt'% elapsed_time, 'w') as f:
