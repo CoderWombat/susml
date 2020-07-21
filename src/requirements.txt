@@ -1,4 +1,4 @@
 barbar
 torch
 torchvision
-horovod
+ray
