@@ -219,9 +219,6 @@ def train_model(rank, model, quant_model, dataloaders, criterion, optimizer, num
                 with torch.set_grad_enabled(phase == 'train'):
                     if quant_model != None:
                         # Use quantized model in inference mode - only train on extracted features
-                        mp_outputs = []
-                        mp.spawn(run_inference, args=(quant_model, inputs, mp_outputs), nprocs=4)
-                        print(mp_outputs)
                         quant_outputs = quant_model(inputs)
                         outputs = model(quant_outputs)
                     else:
@@ -242,9 +239,10 @@ def train_model(rank, model, quant_model, dataloaders, criterion, optimizer, num
 
             print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
 
-            if phase == 'val' and epoch_acc > best_acc and rank == 0:
-                best_acc = epoch_acc
-                best_model_wts = copy.deepcopy(model.state_dict())
+            if rank == 0:
+                if phase == 'val' and epoch_acc > best_acc:
+                    best_acc = epoch_acc
+                    best_model_wts = copy.deepcopy(model.state_dict())
 
         print(str(rank) + 'finished train and val')
 
@@ -299,7 +297,7 @@ def preprocess_data(data_dir, batch_size, input_size):
                       ['train', 'val']}
 
     dataloaders_dict = {
-        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=4) for x
+        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=0) for x
         in ['train', 'val']}
 
     return dataloaders_dict
@@ -345,12 +343,15 @@ def run(rank):
 
     criterion = nn.CrossEntropyLoss()
 
-    model, hist = train_model(rank, ddp_model, quant_model, dataloaders_dict, criterion, optimizer,
+    model = train_model(rank, ddp_model, quant_model, dataloaders_dict, criterion, optimizer,
                               num_epochs=args.num_epochs)
+
+    torch.save(model.state_dict(), "testmodel")
 
 
 if __name__ == '__main__':
     torch.set_num_threads(4)
+    mp.set_start_method("spawn")
     print("possible threads: " + str(torch.get_num_threads()))
 
     args = parse_args()
