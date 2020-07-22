@@ -9,10 +9,21 @@ import torch.nn as nn
 from torch import optim
 
 from utils import get_num_classes, initialize_model, preprocess_data, get_gradients, set_weights
+from joblib import Parallel, delayed
 
 random.seed(123)
 torch.manual_seed(123)
 torch.backends.cudnn.deterministic = True
+
+
+
+def run_inference1(entry):
+    quant_model = torch.jit.load(entry[0])
+    inputs = entry[1]
+    rank = entry[2]
+
+
+    return ((rank, quant_model(inputs)))
 
 @ray.remote(num_cpus=3)
 class DataWorker(object):
@@ -41,11 +52,15 @@ class DataWorker(object):
 
         self.criterion = nn.CrossEntropyLoss()
 
+        if self.args.parallel:
+            scripted_module = torch.jit.script(self.quant_model)
+            scripted_module.save("test_parallel")
+
 
     def get_rank(self):
         return self.rank
 
-    def compute_gradients(self, weights):
+    def compute_gradients(self, weights, parallel):
         # print(f'computing gradients for a batch on node {self.rank} at {datetime.now()}...')
         set_weights(self.model, weights)
 
@@ -61,8 +76,22 @@ class DataWorker(object):
 
         if self.quant_model != None:
             # Use quantized model in inference mode - only train on extracted features
-            quant_outputs = self.quant_model(inputs)
-            outputs = self.model(quant_outputs)
+            if parallel:
+                test_list = []
+                num_processes = 3
+                tensors = torch.split(inputs,num_processes)
+                for i in range(len(tensors)):
+                    test_list.append(["test_parallel", tensors[i], i])
+                # multi_pool = mp.Pool(processes=num_processes)
+                # mp_outputs = multi_pool.map(run_inference1, test_list)
+                results = Parallel(n_jobs=num_processes)(delayed(run_inference1)(test_list[rank]) for rank in range(len(test_list)))
+                results.sort(key=lambda tup: tup[0])
+                quant_outputs = torch.cat(results, 0)
+                outputs= self.model(quant_outputs)
+            else
+                quant_outputs = self.quant_model(inputs)
+                outputs = self.model(quant_outputs)
+
         else:
             outputs = self.model(inputs)
 

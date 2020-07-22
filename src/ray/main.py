@@ -14,6 +14,7 @@ def parse_args():
     parser.add_argument('--dataloader_workers', type=int, default=0)
     parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--sync_param_server', action='store_true')
+    parser.add_argument('--parallel', action='store_true')
 
     return parser.parse_args()
 

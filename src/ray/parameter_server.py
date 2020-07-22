@@ -63,7 +63,7 @@ class ParameterServer(object):
 
         for idx, _ in enumerate(self.dataloaders_dict['train']):
             gradients = [
-                worker.compute_gradients.remote(current_weights) for worker in self.workers
+                worker.compute_gradients.remote(current_weights,self.args.parallel) for worker in self.workers
             ]
             current_weights = self.apply_gradients(*ray.get(gradients))
             print(f'Computed batch {idx}')
@@ -71,7 +71,13 @@ class ParameterServer(object):
     def categorical_accuracy(self, preds, y):
         corrects = torch.sum(preds == y)
 
-        return corrects / len(preds)
+        #print(corrects)
+        #print(corrects.item())
+        #print(len(preds))
+
+        #print((corrects.item() / len(preds)))
+
+        return corrects.item() / len(preds)
 
     def evaluate(self):
         epoch_loss = 0
@@ -93,7 +99,9 @@ class ParameterServer(object):
                 loss = self.criterion(outputs, labels)
                 acc = self.categorical_accuracy(preds, labels)
                 epoch_loss += loss.item()
-                epoch_acc += acc.item()
+                epoch_acc += acc
+                #print("accuracy: "  + str(acc))
+                #print(epoch_acc)
 
         return epoch_loss / len(self.dataloaders_dict['val']), epoch_acc / len(self.dataloaders_dict['val'])
 

@@ -69,7 +69,10 @@ class ParameterServer(object):
             print(f'Computed batch {idx}')
 
     def categorical_accuracy(self, preds, y):
+        print(preds)
+        print(y)
         corrects = torch.sum(preds == y)
+        print(corrects)
 
         return corrects / len(preds)
 
