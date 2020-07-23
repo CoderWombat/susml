@@ -81,11 +81,7 @@ def set_parameter_requires_grad(model):
         param.requires_grad = False
 
 def get_num_classes(data_dir):
-    num_classes = 0
-    for _, dirnames, _ in os.walk(os.path.join(data_dir, "train")):
-        num_classes += len(dirnames)
-
-    return num_classes
+    return 101
 
 def preprocess_data(data_dir, batch_size, input_size):
     data_transforms = {
