@@ -71,7 +71,7 @@ class ParameterServer(object):
     def categorical_accuracy(self, preds, y):
         corrects = torch.sum(preds == y)
 
-        return corrects / len(preds)
+        return corrects.item() / len(preds)
 
     def evaluate(self):
         epoch_loss = 0
@@ -93,7 +93,7 @@ class ParameterServer(object):
                 loss = self.criterion(outputs, labels)
                 acc = self.categorical_accuracy(preds, labels)
                 epoch_loss += loss.item()
-                epoch_acc += acc.item()
+                epoch_acc += acc
 
         return epoch_loss / len(self.dataloaders_dict['val']), epoch_acc / len(self.dataloaders_dict['val'])
 
