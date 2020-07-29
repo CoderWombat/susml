@@ -17,13 +17,7 @@ torch.backends.cudnn.deterministic = True
 
 
 
-def run_inference1(entry):
-    quant_model = torch.jit.load(entry[0])
-    inputs = entry[1]
-    rank = entry[2]
 
-
-    return ((rank, quant_model(inputs)))
 
 @ray.remote(num_cpus=3)
 class DataWorker(object):
@@ -60,6 +54,12 @@ class DataWorker(object):
     def get_rank(self):
         return self.rank
 
+    def run_inference1(self, entry):
+        quant_model = torch.jit.load(entry[0])
+        inputs = entry[1]
+        rank = entry[2]
+
+        return ((rank, quant_model(inputs)))
     def compute_gradients(self, weights, parallel):
         # print(f'computing gradients for a batch on node {self.rank} at {datetime.now()}...')
         set_weights(self.model, weights)
@@ -84,7 +84,7 @@ class DataWorker(object):
                     test_list.append(["test_parallel", tensors[i], i])
                 # multi_pool = mp.Pool(processes=num_processes)
                 # mp_outputs = multi_pool.map(run_inference1, test_list)
-                results = Parallel(n_jobs=num_processes)(delayed(run_inference1)(test_list[rank]) for rank in range(len(test_list)))
+                results = Parallel(n_jobs=num_processes)(delayed(self.run_inference1)(test_list[rank]) for rank in range(len(test_list)))
                 results.sort(key=lambda tup: tup[0])
                 quant_outputs = torch.cat(results, 0)
                 outputs= self.model(quant_outputs)
