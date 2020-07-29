@@ -83,7 +83,7 @@ def set_parameter_requires_grad(model):
 def get_num_classes(data_dir):
     return 200
 
-def preprocess_data(data_dir, batch_size, input_size):
+def preprocess_data(data_dir, batch_size, input_size, world_size, rank):
     data_transforms = {
         'train': transforms.Compose([
             transforms.RandomResizedCrop(input_size),
@@ -104,7 +104,7 @@ def preprocess_data(data_dir, batch_size, input_size):
                       ['train', 'val']}
 
     dataloaders_dict = {
-        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=0) for x
+        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, sampler=torch.utils.data.DistributedSampler(image_datasets[x], num_replicas=world_size, rank=rank), num_workers=0) for x
         in ['train', 'val']}
 
     return dataloaders_dict
