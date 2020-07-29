@@ -104,9 +104,9 @@ def preprocess_data(data_dir, batch_size, input_size, world_size, rank):
                       ['train', 'val']}
 
     dataloaders_dict = {
-        x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batch_size, sampler=torch.utils.data.DistributedSampler(image_datasets[x], num_replicas=world_size, rank=rank), num_workers=0) for x
-        in ['train', 'val']}
-
+        "train": torch.utils.data.DataLoader(image_datasets['train'], batch_size=batch_size, sampler=torch.utils.data.DistributedSampler(image_datasets['train'], num_replicas=world_size, rank=rank), num_workers=0),
+        "val": torch.utils.data.DataLoader(image_datasets['val'],batch_size=batch_size,num_workers=0)
+    }
     return dataloaders_dict
 
 def initialize_model(model_name, num_classes):
