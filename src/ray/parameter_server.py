@@ -23,7 +23,7 @@ class ParameterServer(object):
 
         self.model, input_size, self.quant_model = initialize_model(args.model_name, get_num_classes(args.image_path))
 
-        self.dataloaders_dict = preprocess_data(args.image_path, args.batch_size, input_size)
+        self.dataloaders_dict = preprocess_data(args.image_path, args.batch_size, input_size, args.num_workers, 0)
 
         print("Params to learn:")
         params_to_update = []
