@@ -88,7 +88,7 @@ class DataWorker(object):
                 results.sort(key=lambda tup: tup[0])
                 quant_outputs = torch.cat(results, 0)
                 outputs= self.model(quant_outputs)
-            else
+            else:
                 quant_outputs = self.quant_model(inputs)
                 outputs = self.model(quant_outputs)
 
