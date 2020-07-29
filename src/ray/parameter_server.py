@@ -154,7 +154,7 @@ class ParameterServer(object):
             print(f'\t Val. Loss: {valid_loss:.3f} |  Val. Acc: {valid_acc*100:.2f}%')
 
         overall_end_time = time.time()
-        valid_loss, valid_acc = self.evaluate()
+        # valid_loss, valid_acc = self.evaluate()
         print(f'Final Val. Loss: {valid_loss:.3f} |  Val. Acc: {valid_acc*100:.2f}%')
         print('took overall', self.epoch_time(overall_start_time, overall_end_time))
 

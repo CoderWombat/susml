@@ -81,7 +81,7 @@ def set_parameter_requires_grad(model):
         param.requires_grad = False
 
 def get_num_classes(data_dir):
-    return 101
+    return 200
 
 def preprocess_data(data_dir, batch_size, input_size):
     data_transforms = {
