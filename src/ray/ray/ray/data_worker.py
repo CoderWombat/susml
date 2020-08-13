@@ -69,7 +69,7 @@ class DataWorker(object):
         loss = self.criterion(outputs, labels)
         loss.backward()
 
-        print(f'computed gradients for a batch on node {self.rank}, took {datetime.now() - before}...')
+        # print(f'computed gradients for a batch on node {self.rank}, took {datetime.now() - before}...')
 
         if self.quant_model:
             return get_gradients(self.quant_model)
