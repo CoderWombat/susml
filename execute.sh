@@ -1,0 +1,9 @@
+python3 ~/susml/emanuel_tobias/ray/main.py --image_path ~/susml/emanuel_tobias/dataset_new --model_name mobilenet_quantized --batch_size 64 --num_workers 12 --num_epochs 1
+python3 ~/susml/emanuel_tobias/ray/main.py --image_path ~/susml/emanuel_tobias/dataset_new --model_name mobilenet_quantized --batch_size 64 --num_workers 9 --num_epochs 1
+python3 ~/susml/emanuel_tobias/ray/main.py --image_path ~/susml/emanuel_tobias/dataset_new --model_name mobilenet_quantized --batch_size 64 --num_workers 6 --num_epochs 1
+python3 ~/susml/emanuel_tobias/ray/main.py --image_path ~/susml/emanuel_tobias/dataset_new --model_name mobilenet --batch_size 64 --num_workers 12 --num_epochs 1
+python3 ~/susml/emanuel_tobias/ray/main.py --image_path ~/susml/emanuel_tobias/dataset_new --model_name mobilenet --batch_size 64 --num_workers 9 --num_epochs 1
+python3 ~/susml/emanuel_tobias/ray/main.py --image_path ~/susml/emanuel_tobias/dataset_new --model_name mobilenet --batch_size 64 --num_workers 6 --num_epochs 1
+python3 ~/susml/emanuel_tobias/ray/main.py --image_path ~/susml/emanuel_tobias/dataset_new --model_name resnet --batch_size 64 --num_workers 12 --num_epochs 1
+python3 ~/susml/emanuel_tobias/ray/main.py --image_path ~/susml/emanuel_tobias/dataset_new --model_name resnet --batch_size 64 --num_workers 9 --num_epochs 1
+python3 ~/susml/emanuel_tobias/ray/main.py --image_path ~/susml/emanuel_tobias/dataset_new --model_name resnet --batch_size 64 --num_workers 6 --num_epochs 1

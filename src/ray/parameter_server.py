@@ -158,4 +158,9 @@ class ParameterServer(object):
         print(f'Final Val. Loss: {valid_loss:.3f} |  Val. Acc: {valid_acc*100:.2f}%')
         print('took overall', self.epoch_time(overall_start_time, overall_end_time))
 
+        with open(self.args.model_name + f"_{self.args.num_workers}_pis", "w") as out:
+            out.write(f"Valid Acc.: {valid_acc*100}\n" +
+                      f"Took overall: {self.epoch_time(overall_start_time, overall_end_time)}")
+            out.close()
+
         return 1
