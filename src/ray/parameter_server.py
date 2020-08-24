@@ -74,28 +74,22 @@ class ParameterServer(object):
         return corrects.item() / len(preds)
 
     def evaluate(self):
-        epoch_loss = 0
         epoch_acc = 0
 
         self.model.eval()
 
-        with torch.no_grad():
-            for (inputs, labels) in self.dataloaders_dict['val']:
-                if self.quant_model != None:
-                    # Use quantized model in inference mode - only train on extracted features
-                    quant_outputs = self.quant_model(inputs)
-                    outputs = self.model(quant_outputs)
-                else:
-                    outputs = self.model(inputs)
+        results = ray.get([worker.predict.remote() for worker in self.workers])
+        preds = []
+        labels = []
 
-                _, preds = torch.max(outputs, 1)
+        for p, l in results:
+            preds += p
+            labels += l
 
-                loss = self.criterion(outputs, labels)
-                acc = self.categorical_accuracy(preds, labels)
-                epoch_loss += loss.item()
-                epoch_acc += acc
+        acc = self.categorical_accuracy(preds, labels)
+        epoch_acc += acc
 
-        return epoch_loss / len(self.dataloaders_dict['val']), epoch_acc / len(self.dataloaders_dict['val'])
+        return epoch_acc / len(self.dataloaders_dict['val'])
 
 
     def run(self):
@@ -131,7 +125,9 @@ class ParameterServer(object):
             start_time = time.time()
 
             for iteration in range(updates):
-                # print(f'Starting update {iteration+1:03}/{updates}')
+                if iteration % 100 == 0:
+                    print(f'Starting update {iteration+1:03}/{updates}')
+
                 ready_gradient_list, rest = ray.wait(list(gradients))
                 if len(ready_gradient_list) == 0:
                     print(f'wait failed {ready_gradient_list}, {rest}')
@@ -148,14 +144,14 @@ class ParameterServer(object):
             end_time = time.time()
             epoch_mins, epoch_secs = self.epoch_time(start_time, end_time)
 
-            valid_loss, valid_acc = self.evaluate()
+            _, valid_acc = self.evaluate()
 
             print(f'Finished epoch {epoch+1:02} in {epoch_mins} min {epoch_secs} s')
-            print(f'\t Val. Loss: {valid_loss:.3f} |  Val. Acc: {valid_acc*100:.2f}%')
+            print(f'\t Val. Acc: {valid_acc*100:.2f}%')
 
         overall_end_time = time.time()
         # valid_loss, valid_acc = self.evaluate()
-        print(f'Final Val. Loss: {valid_loss:.3f} |  Val. Acc: {valid_acc*100:.2f}%')
+        print(f'Final Val. Acc: {valid_acc*100:.2f}%')
         print('took overall', self.epoch_time(overall_start_time, overall_end_time))
 
         with open(self.args.model_name + f"_{self.args.num_workers}_pis", "w") as out:

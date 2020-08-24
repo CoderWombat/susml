@@ -69,6 +69,20 @@ class DataWorker(object):
         loss = self.criterion(outputs, labels)
         loss.backward()
 
-        # print(f'computed gradients for a batch on node {self.rank}, took {datetime.now() - before}...')
-
         return get_gradients(self.model)
+
+    def predict(self):
+        predictions = []
+
+        for (inputs, labels) in self.dataloaders_dict['val']:
+            if self.quant_model != None:
+                quant_outputs = self.quant_model(inputs)
+                outputs = self.model(quant_outputs)
+            else:
+                outputs = self.model(inputs)
+
+            _, preds = torch.max(outputs, 1)
+
+            predictions += preds
+
+        return predictions
