@@ -75,7 +75,7 @@ class DataWorker(object):
         set_weights(self.model, weights)
         self.model.eval()
         predictions = []
-        labels = []
+        #labels = []
         corrects = 0
         #print(len(self.dataloaders_dict['val']))
         for (inputs, labels) in self.dataloaders_dict['val']:
@@ -88,6 +88,6 @@ class DataWorker(object):
             _, preds = torch.max(outputs, 1)
 
             predictions += preds
-            labels += labels
+            #labels += labels
             corrects += torch.eq(preds, labels).sum().item()
         return corrects,len(predictions)
