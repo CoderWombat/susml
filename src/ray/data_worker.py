@@ -71,9 +71,13 @@ class DataWorker(object):
 
         return get_gradients(self.model)
 
-    def predict(self):
+    def predict(self,weights):
+        set_weights(self.model, weights)
+        self.model.eval()
         predictions = []
-
+        labels = []
+        corrects = 0
+        #print(len(self.dataloaders_dict['val']))
         for (inputs, labels) in self.dataloaders_dict['val']:
             if self.quant_model != None:
                 quant_outputs = self.quant_model(inputs)
@@ -84,5 +88,6 @@ class DataWorker(object):
             _, preds = torch.max(outputs, 1)
 
             predictions += preds
-
-        return predictions
+            labels += labels
+            corrects += torch.eq(preds, labels).sum().item()
+        return corrects,len(predictions)

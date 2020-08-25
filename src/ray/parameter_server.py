@@ -69,27 +69,39 @@ class ParameterServer(object):
             print(f'Computed batch {idx}')
 
     def categorical_accuracy(self, preds, y):
-        corrects = torch.sum(preds == y)
+        #corrects = torch.eq(preds,y).sum()
+        #print(preds)
+        #print(y)
+        corrects = sum(x == y for x, y in zip(preds, y))
+        #print(corrects)
+        return corrects / len(preds)
 
-        return corrects.item() / len(preds)
-
-    def evaluate(self):
-        epoch_acc = 0
+    def evaluate(self,weights):
 
         self.model.eval()
 
-        results = ray.get([worker.predict.remote() for worker in self.workers])
-        preds = []
-        labels = []
+        results = ray.get([worker.predict.remote(weights) for worker in self.workers])
+        print("results")
+        print(results)
+        corrects = 0.0
+        length = 0.0
 
-        for p, l in results:
-            preds += p
-            labels += l
+        for correct, l in results:
+            print(correct)
+            corrects += correct
+            length += l
 
-        acc = self.categorical_accuracy(preds, labels)
-        epoch_acc += acc
+        #acc = self.categorical_accuracy(preds, labels)
+        print("corects")
+        print(corrects)
+        print("length")
+        print(length)
+        print(len(self.dataloaders_dict['val']))
+        acc = corrects/length
+        print("acc")
+        print(acc)
 
-        return epoch_acc / len(self.dataloaders_dict['val'])
+        return acc
 
 
     def run(self):
@@ -111,6 +123,7 @@ class ParameterServer(object):
         return 1
 
     def run_async(self):
+        print("hi")
         overall_start_time = time.time()
 
         current_weights = get_weights(self.model)
@@ -144,7 +157,7 @@ class ParameterServer(object):
             end_time = time.time()
             epoch_mins, epoch_secs = self.epoch_time(start_time, end_time)
 
-            _, valid_acc = self.evaluate()
+            valid_acc = self.evaluate(get_weights(self.model))
 
             print(f'Finished epoch {epoch+1:02} in {epoch_mins} min {epoch_secs} s')
             print(f'\t Val. Acc: {valid_acc*100:.2f}%')
