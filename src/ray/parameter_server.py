@@ -131,7 +131,6 @@ class ParameterServer(object):
             start_time = time.time()
 
             for iteration in range(updates):
-                # print(f'Starting update {iteration+1:03}/{updates}')
                 ready_gradient_list, rest = ray.wait(list(gradients))
                 if len(ready_gradient_list) == 0:
                     print(f'wait failed {ready_gradient_list}, {rest}')
@@ -154,7 +153,6 @@ class ParameterServer(object):
             print(f'\t Val. Loss: {valid_loss:.3f} |  Val. Acc: {valid_acc*100:.2f}%')
 
         overall_end_time = time.time()
-        # valid_loss, valid_acc = self.evaluate()
         print(f'Final Val. Loss: {valid_loss:.3f} |  Val. Acc: {valid_acc*100:.2f}%')
         print('took overall', self.epoch_time(overall_start_time, overall_end_time))
 

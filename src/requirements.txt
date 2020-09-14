@@ -1,4 +1,6 @@
-barbar
 torch
 torchvision
+numpy
+Pillow
+py-spy
 ray

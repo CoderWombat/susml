@@ -4,36 +4,6 @@ import os
 
 from torchvision import transforms, datasets, models
 
-
-def create_quantized_resnet(model_fe, num_ftrs, num_classes):
-    model_fe_features = nn.Sequential(
-        model_fe.quant,  # Quantize the input
-        model_fe.conv1,
-        model_fe.bn1,
-        model_fe.relu,
-        model_fe.maxpool,
-        model_fe.layer1,
-        model_fe.layer2,
-        model_fe.layer3,
-        model_fe.layer4,
-        model_fe.avgpool,
-        model_fe.dequant,  # Dequantize the output
-    )
-
-    new_head = nn.Sequential(
-        nn.Dropout(p=0.5),
-        nn.Linear(num_ftrs, num_classes),
-    )
-
-    new_model = nn.Sequential(
-        model_fe_features,
-        nn.Flatten(1),
-        new_head,
-    )
-
-    return new_model
-
-
 def create_quantized_mobilenet(model_fe, num_ftrs, num_classes):
     class Reshape(nn.Module):
         def __init__(self):
@@ -55,26 +25,6 @@ def create_quantized_mobilenet(model_fe, num_ftrs, num_classes):
     )
 
     return new_model, quant_model
-
-
-def create_quantized_shufflenet(model_fe, num_ftrs, num_classes):
-    model_fe_features = nn.Sequential(
-        model_fe.quant,  # Quantize the input
-        model_fe.conv1,
-        model_fe.maxpool,
-        model_fe.stage2,
-        model_fe.stage3,
-        model_fe.stage4,
-        model_fe.conv5,
-        model_fe.dequant,  # Dequantize the output
-    )
-
-    new_model = nn.Sequential(
-        model_fe_features,
-        nn.Linear(num_ftrs, num_classes)
-    )
-
-    return new_model
 
 def set_parameter_requires_grad(model):
     for param in model.parameters():
@@ -124,32 +74,12 @@ def initialize_model(model_name, num_classes):
         num_ftrs = model.classifier[6].in_features
         model.classifier[6] = nn.Linear(num_ftrs, num_classes)
         input_size = 224
-    elif model_name == "vgg-16":
-        """ VGG-16 """
-        model = models.vgg16_bn(pretrained=True)
-        set_parameter_requires_grad(model)
-        num_ftrs = model.classifier[6].in_features
-        model.classifier[6] = nn.Linear(num_ftrs, num_classes)
-        input_size = 224
-    elif model_name == "squeezenet":
-        """ Squeezenet """
-        model = models.squeezenet1_0(pretrained=True)
-        set_parameter_requires_grad(model)
-        model.classifier[1] = nn.Conv2d(512, num_classes, kernel_size=(1, 1), stride=(1, 1))
-        model.num_classes = num_classes
-        input_size = 224
     elif model_name == "resnet":
         """ Resnet18 """
         model = models.resnet18(pretrained=True)
         set_parameter_requires_grad(model)
         num_ftrs = model.fc.in_features
         model.fc = nn.Linear(num_ftrs, num_classes)
-        input_size = 224
-    elif model_name == "quantized_resnet":
-        """ Resnet18 - Quantized """
-        quant_res = models.quantization.resnet18(pretrained=True, progress=True, quantize=True)
-        num_ftrs = quant_res.fc.in_features
-        model = create_quantized_resnet(quant_res, num_ftrs, num_classes)
         input_size = 224
     elif model_name == "mobilenet":
         model = torch.hub.load('pytorch/vision:v0.6.0', 'mobilenet_v2', pretrained=True)
@@ -163,32 +93,6 @@ def initialize_model(model_name, num_classes):
         num_ftrs = quant_mob.classifier[1].in_features
         model, quant_model = create_quantized_mobilenet(quant_mob, num_ftrs, num_classes)
         input_size = 224
-    elif model_name == "shufflenet":
-        model = torch.hub.load('pytorch/vision:v0.6.0', 'shufflenet_v2_x1_0', pretrained=True)
-        set_parameter_requires_grad(model)
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, num_classes)
-        model.num_classes = num_classes
-        input_size = 256
-    elif model_name == "quantized_shufflenet":
-        quant_shuf = models.quantization.shufflenet_v2_x1_0(pretrained=True, progress=True, quantize=True)
-        num_ftrs = quant_shuf.fc.in_features
-        model = create_quantized_shufflenet(quant_shuf, num_ftrs, num_classes)
-        input_size = 256
-    elif model_name == "efficientnet":
-        model = torch.hub.load('rwightman/gen-efficientnet-pytorch', 'efficientnet_b0', pretrained=True)
-        set_parameter_requires_grad(model)
-        num_ftrs = model.classifier.in_features
-        model.classifier = nn.Linear(num_ftrs, num_classes)
-        model.num_classes = num_classes
-        input_size = 256
-    elif model_name == "densenet":
-        model = torch.hub.load('pytorch/vision:v0.6.0', 'densenet121', pretrained=True)
-        set_parameter_requires_grad(model)
-        num_ftrs = model.classifier.in_features
-        model.classifier = nn.Linear(num_ftrs, num_classes)
-        model.num_classes = num_classes
-        input_size = 256
     else:
         print("Invalid model name, exiting...")
         exit()

@@ -1,9 +1,23 @@
-# pytorch-distributed-rnn
+# CNN training on edge devices
 
-## Running the `DistributedDataParralel` example on a `docker-compose` cluster
+This repo contains code for running different convolutional neural networks on a Raspberry Pi cluster. The use case 
+is transfer learning (only classification layers are learned) on a subset of ImageNet.
 
-1. `docker-compose up -d --build` (This might take a while, since pytorch with MPI support needs to be built)
-2. `ssh -i id_rsa pi@localhost` to start an SSH session in the master node.
-3. `ssh-keyscan slave > .ssh/known_hosts` to allow future SSH connections from the `master` container to the `slave` container without a (yes/no) prompt
-4. `mpirun --host master,slave hostname` to check if the connection is set up correctly (this should print `master` and `slave`)
-5. `mpirun --host master,slave python3 src/example_ddp.py` (the final parameters of the model should be the same for all ranks, which indicates that the distributed training was successful)
+## Run code
+
+- Start ray
+
+`ray stop && OMP_NUM_THREADS=3 ray start --address='192.168.0.13:6379' --redis-password='5241590000000000'`
+
+- Start training
+
+`python ray/main.py`
+
+- Parameters:
+
+    - _image_path_: Path to dataset (format: data/train/<class_names>/<image_files> + data/val/<class_names>/<image_files>)
+    - _model_name_: One of ['alexnet', 'resnet', 'mobilenet', 'quantized_mobilenet']
+    - _num_epochs_: Number of epochs
+    - _batch_size_: Batch size
+    - _num_workers_: How many worker nodes to use
+    - _sync_param_server_: Whether to use a synchronous instead of an async parameter server 

@@ -46,7 +46,6 @@ class DataWorker(object):
         return self.rank
 
     def compute_gradients(self, weights):
-        # print(f'computing gradients for a batch on node {self.rank} at {datetime.now()}...')
         set_weights(self.model, weights)
 
         try:
@@ -54,8 +53,6 @@ class DataWorker(object):
         except StopIteration:  # When the epoch ends, start a new epoch.
             self.train_iterator = iter(self.dataloaders_dict['train'])
             (inputs, labels) = next(self.train_iterator)
-
-        before = datetime.now()
 
         self.model.zero_grad()
 
@@ -68,7 +65,5 @@ class DataWorker(object):
 
         loss = self.criterion(outputs, labels)
         loss.backward()
-
-        # print(f'computed gradients for a batch on node {self.rank}, took {datetime.now() - before}...')
 
         return get_gradients(self.model)
